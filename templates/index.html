@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ScoreNorm — Per-Group Normalizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  /* ── reset & base ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --black:  #0a0a0a;
+    --white:  #f5f4f0;
+    --grey:   #888;
+    --border: #d0cfc9;
+    --mono:   'DM Mono', monospace;
+    --serif:  'Playfair Display', serif;
+    --sans:   'DM Sans', sans-serif;
+  }
+
+  /* ── dark mode ── */
+  html.dark {
+    --black:  #f0efe9;
+    --white:  #111110;
+    --grey:   #666;
+    --border: #2a2a28;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  *, *::before, *::after {
+    transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease;
+  }
+
+  body {
+    background: var(--white);
+    color: var(--black);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ── header ── */
+  header {
+    border-bottom: 2px solid var(--black);
+    padding: 28px 48px;
+    display: flex;
+    align-items: baseline;
+    gap: 20px;
+    position: sticky;
+    top: 0;
+    background: var(--white);
+    z-index: 100;
+  }
+
+  .logo {
+    font-family: var(--serif);
+    font-size: 1.6rem;
+    font-weight: 900;
+    letter-spacing: -0.5px;
+  }
+
+  .logo span {
+    display: inline-block;
+    background: var(--black);
+    color: var(--white);
+    padding: 0 6px 2px;
+    margin-right: 2px;
+  }
+
+  .tagline {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--grey);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* ── layout ── */
+  main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 60px 48px;
+  }
+
+  /* ── section labels ── */
+  .step-label {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--grey);
+    margin-bottom: 10px;
+  }
+
+  /* ── upload zone ── */
+  #upload-section { margin-bottom: 56px; }
+
+  .upload-zone {
+    border: 2px dashed var(--border);
+    padding: 56px 40px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+  }
+
+  .upload-zone:hover,
+  .upload-zone.drag-over {
+    border-color: var(--black);
+    background: rgba(128,128,128,0.06);
+  }
+
+  .upload-zone input[type="file"] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+
+  .upload-icon {
+    font-size: 2.4rem;
+    line-height: 1;
+    margin-bottom: 16px;
+    display: block;
+    opacity: 0.35;
+  }
+
+  .upload-zone h2 {
+    font-family: var(--serif);
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+
+  .upload-zone p {
+    color: var(--grey);
+    font-size: 0.85rem;
+    font-family: var(--mono);
+  }
+
+  .file-badge {
+    display: none;
+    margin-top: 16px;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    background: var(--black);
+    color: var(--white);
+    padding: 4px 12px;
+    display: inline-block;
+  }
+
+  /* ── column config ── */
+  #config-section {
+    display: none;
+    border-top: 2px solid var(--black);
+    padding-top: 48px;
+    margin-bottom: 48px;
+    animation: fadeUp 0.4s ease both;
+  }
+
+  .config-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 24px;
+    margin-top: 24px;
+  }
+
+  .config-card {
+    border: 1.5px solid var(--border);
+    padding: 24px;
+  }
+
+  .config-card label {
+    display: block;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--grey);
+    margin-bottom: 10px;
+  }
+
+  .config-card select,
+  .config-card input {
+    width: 100%;
+    background: transparent;
+    border: 1.5px solid var(--black);
+    padding: 10px 14px;
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    color: var(--black);
+    appearance: none;
+    cursor: pointer;
+    outline: none;
+    transition: background 0.15s;
+  }
+
+  .config-card select:focus,
+  .config-card input:focus {
+    background: var(--black);
+    color: var(--white);
+  }
+
+  /* ── col summary ── */
+  #col-summary {
+    margin-top: 28px;
+    border: 1.5px solid var(--border);
+    overflow: hidden;
+  }
+
+  .col-summary-header {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 2fr;
+    gap: 0;
+    background: var(--black);
+    color: var(--white);
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 10px 16px;
+  }
+
+  .col-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 2fr;
+    gap: 0;
+    padding: 9px 16px;
+    border-top: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    transition: background 0.12s;
+  }
+
+  .col-row:hover { background: rgba(128,128,128,0.06); }
+  .col-row .tag { color: var(--grey); font-size: 0.7rem; }
+  .col-row .numeric-badge {
+    background: var(--black);
+    color: var(--white);
+    font-size: 0.6rem;
+    padding: 1px 6px;
+    display: inline;
+  }
+
+  /* ── run button ── */
+  .btn-run {
+    margin-top: 32px;
+    background: var(--black);
+    color: var(--white);
+    border: none;
+    padding: 16px 40px;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+
+  .btn-run:hover { opacity: 0.75; }
+  .btn-run:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  /* ── results ── */
+  #results-section {
+    display: none;
+    border-top: 2px solid var(--black);
+    padding-top: 48px;
+    animation: fadeUp 0.5s ease both;
+  }
+
+  .results-meta {
+    display: flex;
+    gap: 40px;
+    margin: 24px 0 40px;
+    flex-wrap: wrap;
+  }
+
+  .meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .meta-item .meta-val {
+    font-family: var(--serif);
+    font-size: 2.2rem;
+    font-weight: 900;
+    line-height: 1;
+  }
+
+  .meta-item .meta-key {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--grey);
+  }
+
+  /* stats bar */
+  .stats-section {
+    margin-bottom: 48px;
+  }
+
+  .stats-section h3 {
+    font-family: var(--serif);
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 16px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .stats-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+  }
+
+  .stats-table th {
+    text-align: left;
+    padding: 10px 14px;
+    background: var(--black);
+    color: var(--white);
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-weight: 400;
+  }
+
+  .stats-table td {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .stats-table tr:hover td { background: rgba(128,128,128,0.06); }
+
+  /* group results */
+  .group-block {
+    margin-bottom: 52px;
+  }
+
+  .group-title {
+    font-family: var(--serif);
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  .group-subtitle {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--grey);
+    margin-bottom: 16px;
+  }
+
+  .data-table-wrap { overflow-x: auto; }
+
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    white-space: nowrap;
+  }
+
+  .data-table th {
+    background: var(--black);
+    color: var(--white);
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 0.65rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 400;
+  }
+
+  .data-table td {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .data-table tr:hover td { background: rgba(128,128,128,0.06); }
+
+  /* rank cell */
+  .rank-1 { font-weight: 700; }
+
+  .rank-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    font-size: 0.7rem;
+    font-weight: 500;
+  }
+
+  .rank-badge.gold {
+    background: var(--black);
+    color: var(--white);
+  }
+
+  /* norm score bar */
+  .score-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 130px;
+  }
+
+  .score-bar {
+    flex: 1;
+    height: 4px;
+    background: var(--border);
+    position: relative;
+    max-width: 80px;
+  }
+
+  .score-bar-fill {
+    position: absolute;
+    top: 0; left: 0; bottom: 0;
+    background: var(--black);
+  }
+
+  /* download btn */
+  .btn-download {
+    margin-top: 40px;
+    border: 2px solid var(--black);
+    background: transparent;
+    color: var(--black);
+    padding: 14px 36px;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+  }
+
+  .btn-download:hover {
+    background: var(--black);
+    color: var(--white);
+  }
+
+  /* ── error ── */
+  .error-box {
+    background: var(--black);
+    color: var(--white);
+    padding: 16px 20px;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    margin-top: 16px;
+    display: none;
+  }
+
+  /* ── loader ── */
+  .loader {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    margin-top: 20px;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--grey);
+  }
+
+  .loader-dots span {
+    display: inline-block;
+    width: 5px; height: 5px;
+    background: var(--black);
+    border-radius: 50%;
+    animation: blink 1.2s infinite;
+  }
+
+  .loader-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .loader-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes blink {
+    0%, 80%, 100% { opacity: 0.2; }
+    40% { opacity: 1; }
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── theme toggle ── */
+  .theme-toggle {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--grey);
+    cursor: pointer;
+    user-select: none;
+    border: 1.5px solid var(--border);
+    padding: 6px 14px;
+    transition: border-color 0.2s;
+  }
+
+  .theme-toggle:hover { border-color: var(--black); color: var(--black); }
+
+  .toggle-track {
+    width: 32px;
+    height: 16px;
+    border: 1.5px solid currentColor;
+    border-radius: 999px;
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .toggle-thumb {
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 8px; height: 8px;
+    background: currentColor;
+    border-radius: 50%;
+    transition: transform 0.22s ease;
+  }
+
+  html.dark .toggle-thumb { transform: translateX(16px); }
+
+  /* ── footer ── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 24px 48px;
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    color: var(--grey);
+    margin-top: 80px;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  /* ── responsive ── */
+  @media (max-width: 700px) {
+    header, main, footer { padding-left: 20px; padding-right: 20px; }
+    .config-grid { grid-template-columns: 1fr; }
+    .col-summary-header, .col-row { grid-template-columns: 2fr 1fr 1fr; }
+    .col-row .sample-cell { display: none; }
+    .col-summary-header .sample-head { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><span>SN</span>ScoreNorm</div>
+  <div class="tagline">Per-group Min-Max Normalization</div>
+  <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode">
+    <span id="theme-label">Dark</span>
+    <div class="toggle-track"><div class="toggle-thumb"></div></div>
+  </button>
+</header>
+
+<main>
+
+  <!-- STEP 1: Upload -->
+  <section id="upload-section">
+    <div class="step-label">Step 01 — Upload File</div>
+    <div class="upload-zone" id="drop-zone">
+      <input type="file" id="file-input" accept=".xlsx,.xls,.csv" />
+      <span class="upload-icon">⇪</span>
+      <h2>Drop your file here</h2>
+      <p>Supports .xlsx · .xls · .csv</p>
+      <div class="file-badge" id="file-badge"></div>
+    </div>
+    <div class="error-box" id="upload-error"></div>
+  </section>
+
+  <!-- STEP 2: Configure -->
+  <section id="config-section">
+    <div class="step-label">Step 02 — Configure Columns</div>
+
+    <!-- column summary table -->
+    <div id="col-summary">
+      <div class="col-summary-header">
+        <div>Column</div>
+        <div>Type</div>
+        <div>Unique</div>
+        <div class="sample-head">Sample Values</div>
+      </div>
+      <div id="col-rows"></div>
+    </div>
+
+    <div class="config-grid" style="margin-top:28px;">
+      <div class="config-card">
+        <label>Group By Column</label>
+        <select id="sel-group"></select>
+      </div>
+      <div class="config-card">
+        <label>Score Column (Numeric)</label>
+        <select id="sel-score"></select>
+      </div>
+      <div class="config-card">
+        <label>Top N per Group</label>
+        <input type="number" id="inp-topn" value="10" min="1" max="100" />
+      </div>
+    </div>
+
+    <div>
+      <button class="btn-run" id="btn-run">Run Normalization →</button>
+      <div class="loader" id="loader">
+        <div class="loader-dots"><span></span><span></span><span></span></div>
+        Processing…
+      </div>
+      <div class="error-box" id="process-error"></div>
+    </div>
+  </section>
+
+  <!-- STEP 3: Results -->
+  <section id="results-section">
+    <div class="step-label">Step 03 — Results</div>
+
+    <div class="results-meta" id="results-meta"></div>
+
+    <!-- Stats table -->
+    <div class="stats-section">
+      <h3>Per-Group Statistics</h3>
+      <div style="overflow-x:auto;">
+        <table class="stats-table" id="stats-table">
+          <thead></thead><tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Group result tables -->
+    <div id="group-results"></div>
+
+    <button class="btn-download" id="btn-download">↓ Download Excel Results</button>
+  </section>
+
+</main>
+
+<footer>
+  <span>ScoreNorm — Min-Max Per-Group Normalizer</span>
+  <span>Powered by Flask + Pandas</span>
+</footer>
+
+<script>
+  // ── theme ──────────────────────────────────────────────────────────────────
+  const html       = document.documentElement;
+  const themeBtn   = document.getElementById('theme-toggle');
+  const themeLabel = document.getElementById('theme-label');
+
+  // Restore saved preference, or use system preference
+  const savedTheme = localStorage.getItem('scorenorm-theme');
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  if (savedTheme === 'dark' || (!savedTheme && prefersDark)) applyDark(true);
+
+  function applyDark(on) {
+    html.classList.toggle('dark', on);
+    themeLabel.textContent = on ? 'Light' : 'Dark';
+  }
+
+  themeBtn.addEventListener('click', () => {
+    const isDark = html.classList.contains('dark');
+    applyDark(!isDark);
+    localStorage.setItem('scorenorm-theme', !isDark ? 'dark' : 'light');
+  });
+
+  // ── state ──────────────────────────────────────────────────────────────────
+  let uploadedFile   = null;
+  let columnMeta     = [];
+  let lastResult     = null;
+
+  // ── elements ───────────────────────────────────────────────────────────────
+  const dropZone     = document.getElementById('drop-zone');
+  const fileInput    = document.getElementById('file-input');
+  const fileBadge    = document.getElementById('file-badge');
+  const uploadError  = document.getElementById('upload-error');
+  const configSec    = document.getElementById('config-section');
+  const colRows      = document.getElementById('col-rows');
+  const selGroup     = document.getElementById('sel-group');
+  const selScore     = document.getElementById('sel-score');
+  const inpTopN      = document.getElementById('inp-topn');
+  const btnRun       = document.getElementById('btn-run');
+  const loader       = document.getElementById('loader');
+  const processError = document.getElementById('process-error');
+  const resultsSec   = document.getElementById('results-section');
+  const resultsMeta  = document.getElementById('results-meta');
+  const groupResults = document.getElementById('group-results');
+  const btnDownload  = document.getElementById('btn-download');
+
+  // ── drag-drop ──────────────────────────────────────────────────────────────
+  ['dragenter','dragover'].forEach(e =>
+    dropZone.addEventListener(e, ev => { ev.preventDefault(); dropZone.classList.add('drag-over'); })
+  );
+  ['dragleave','drop'].forEach(e =>
+    dropZone.addEventListener(e, ev => { ev.preventDefault(); dropZone.classList.remove('drag-over'); })
+  );
+  dropZone.addEventListener('drop', ev => {
+    const f = ev.dataTransfer.files[0];
+    if (f) handleFile(f);
+  });
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) handleFile(fileInput.files[0]);
+  });
+
+  // ── upload ─────────────────────────────────────────────────────────────────
+  async function handleFile(file) {
+    showError(uploadError, '');
+    uploadedFile = file;
+
+    fileBadge.textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
+    fileBadge.style.display = 'inline-block';
+
+    const fd = new FormData();
+    fd.append('file', file);
+
+    try {
+      const res  = await fetch('/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (data.error) { showError(uploadError, data.error); return; }
+      renderConfig(data);
+    } catch(e) {
+      showError(uploadError, 'Upload failed: ' + e.message);
+    }
+  }
+
+  function renderConfig(data) {
+    columnMeta = data.columns;
+
+    // Column summary table
+    colRows.innerHTML = '';
+    columnMeta.forEach(col => {
+      const row = document.createElement('div');
+      row.className = 'col-row';
+      row.innerHTML = `
+        <div>${col.name}${col.numeric ? ' <span class="numeric-badge">NUM</span>' : ''}</div>
+        <div class="tag">${col.dtype}</div>
+        <div class="tag">${col.n_unique}</div>
+        <div class="tag sample-cell">${col.sample.join(', ')}</div>
+      `;
+      colRows.appendChild(row);
+    });
+
+    // Populate selects
+    const allCols     = columnMeta.map(c => c.name);
+    const numericCols = columnMeta.filter(c => c.numeric).map(c => c.name);
+
+    populateSelect(selGroup, allCols);
+    populateSelect(selScore, numericCols);
+
+    // Smart defaults: pick first non-numeric for group, first numeric for score
+    const firstCat = columnMeta.find(c => !c.numeric);
+    if (firstCat) selGroup.value = firstCat.name;
+    if (numericCols.length) selScore.value = numericCols[0];
+
+    configSec.style.display = 'block';
+    configSec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function populateSelect(sel, options) {
+    sel.innerHTML = options.map(o => `<option value="${o}">${o}</option>`).join('');
+  }
+
+  // ── process ────────────────────────────────────────────────────────────────
+  btnRun.addEventListener('click', async () => {
+    showError(processError, '');
+    btnRun.disabled = true;
+    loader.style.display = 'flex';
+    resultsSec.style.display = 'none';
+
+    const fd = new FormData();
+    fd.append('file',      uploadedFile);
+    fd.append('group_col', selGroup.value);
+    fd.append('score_col', selScore.value);
+    fd.append('top_n',     inpTopN.value);
+
+    try {
+      const res  = await fetch('/process', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (data.error) { showError(processError, data.error); return; }
+      lastResult = data;
+      renderResults(data);
+    } catch(e) {
+      showError(processError, 'Processing failed: ' + e.message);
+    } finally {
+      btnRun.disabled = false;
+      loader.style.display = 'none';
+    }
+  });
+
+  // ── render results ─────────────────────────────────────────────────────────
+  function renderResults(data) {
+    // Meta
+    resultsMeta.innerHTML = `
+      <div class="meta-item">
+        <div class="meta-val">${data.total_rows}</div>
+        <div class="meta-key">Total Rows</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-val">${data.groups.length}</div>
+        <div class="meta-key">Groups</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-val">${data.top_n}</div>
+        <div class="meta-key">Top N / Group</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-val">${data.group_col}</div>
+        <div class="meta-key">Grouped By</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-val">${data.score_col}</div>
+        <div class="meta-key">Score Column</div>
+      </div>
+    `;
+
+    // Stats table
+    renderStatsTable(data.stats, data.group_col, data.score_col, data.norm_col);
+
+    // Group tables
+    groupResults.innerHTML = '';
+    data.groups.forEach(g => {
+      const normIdx = g.columns.indexOf(data.norm_col);
+      const rankIdx = g.columns.indexOf('Rank');
+
+      const rows = g.rows.map((row, i) => {
+        const isTop = row[rankIdx] === '1';
+        const normVal = parseFloat(row[normIdx]) || 0;
+
+        const cells = g.columns.map((col, ci) => {
+          if (col === 'Rank') {
+            return `<td><span class="rank-badge ${row[ci] === '1' ? 'gold' : ''}">${row[ci]}</span></td>`;
+          }
+          if (col === data.norm_col) {
+            const pct = Math.round(normVal * 100);
+            return `<td>
+              <div class="score-bar-wrap">
+                <span>${row[ci]}</span>
+                <div class="score-bar"><div class="score-bar-fill" style="width:${pct}%"></div></div>
+              </div>
+            </td>`;
+          }
+          return `<td>${row[ci]}</td>`;
+        }).join('');
+
+        return `<tr class="${isTop ? 'rank-1' : ''}">${cells}</tr>`;
+      }).join('');
+
+      const headers = g.columns.map(c => `<th>${c}</th>`).join('');
+
+      const block = document.createElement('div');
+      block.className = 'group-block';
+      block.innerHTML = `
+        <div class="group-title">${g.name}</div>
+        <div class="group-subtitle">Showing top ${data.top_n} by ${data.norm_col}</div>
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead><tr>${headers}</tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      `;
+      groupResults.appendChild(block);
+    });
+
+    resultsSec.style.display = 'block';
+    resultsSec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function renderStatsTable(stats, groupCol, scoreCol, normCol) {
+    if (!stats || !stats.length) return;
+    const keys = Object.keys(stats[0]);
+    const thead = document.querySelector('#stats-table thead');
+    const tbody = document.querySelector('#stats-table tbody');
+    thead.innerHTML = `<tr>${keys.map(k => `<th>${k}</th>`).join('')}</tr>`;
+    tbody.innerHTML = stats.map(row =>
+      `<tr>${keys.map(k => `<td>${row[k]}</td>`).join('')}</tr>`
+    ).join('');
+  }
+
+  // ── download ───────────────────────────────────────────────────────────────
+  btnDownload.addEventListener('click', async () => {
+    if (!uploadedFile || !lastResult) return;
+    const fd = new FormData();
+    fd.append('file',      uploadedFile);
+    fd.append('group_col', lastResult.group_col);
+    fd.append('score_col', lastResult.score_col);
+    fd.append('top_n',     lastResult.top_n);
+
+    const res  = await fetch('/download', { method: 'POST', body: fd });
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = 'normalized_results.xlsx'; a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // ── utils ──────────────────────────────────────────────────────────────────
+  function showError(el, msg) {
+    el.textContent = msg;
+    el.style.display = msg ? 'block' : 'none';
+  }
+</script>
+
+</body>
+</html>
